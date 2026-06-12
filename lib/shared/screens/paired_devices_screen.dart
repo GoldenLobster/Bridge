@@ -71,16 +71,6 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
         }) ??
         {};
 
-    ref.listen(reconnectStatusProvider, (_, next) {
-      final event = next.valueOrNull;
-      if (event == null) return;
-      if (!mounted) return;
-      final deviceIds = devicesAsync.valueOrNull;
-      if (deviceIds != null && deviceIds.any((d) => d.id == event.deviceId)) {
-        setState(() {});
-      }
-    });
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bridge'),
