@@ -118,12 +118,19 @@ class ConnectionManager {
     await _reconnectStatusController.close();
   }
 
+  static const _maxAttempts = 10;
+
   void _attemptReconnect(
     String deviceId,
     String ip,
     int port,
     _ReconnectState state,
   ) {
+    if (state.attempts >= _maxAttempts) {
+      _reconnectStates.remove(deviceId);
+      _emitReconnectStatus(deviceId, ReconnectStatus.disconnected);
+      return;
+    }
     if (hasActiveSession(deviceId)) {
       _resetReconnectState(deviceId);
       _emitReconnectStatus(deviceId, ReconnectStatus.connected);

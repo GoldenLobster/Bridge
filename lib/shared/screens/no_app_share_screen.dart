@@ -19,12 +19,6 @@ class _NoAppShareScreenState extends ConsumerState<NoAppShareScreen> {
   String? _serverUrl;
 
   @override
-  void dispose() {
-    ref.read(httpShareServerProvider).stop();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Share Without App')),

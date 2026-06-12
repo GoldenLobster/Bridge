@@ -25,3 +25,9 @@ final connectionManagerProvider = Provider<ConnectionManager>((ref) {
   ref.onDispose(() => manager.stop());
   return manager;
 });
+
+final reconnectStatusProvider = StreamProvider.autoDispose<
+    ({String deviceId, ReconnectStatus status})>((ref) {
+  final cm = ref.watch(connectionManagerProvider);
+  return cm.reconnectStatus;
+});

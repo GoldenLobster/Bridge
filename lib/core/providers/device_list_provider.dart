@@ -9,14 +9,11 @@ import '../models/bridge_device.dart';
 import '../networking/connection_manager.dart';
 import '../services/app_settings_provider.dart';
 import '../services/mdns_discovery_service.dart';
-import '../services/pairing_service_provider.dart';
 import 'connection_providers.dart';
 
 class DeviceListNotifier extends AsyncNotifier<List<BridgeDevice>> {
   MdnsDiscoveryService? _discoveryService;
   StreamSubscription<BridgeDevice>? _subscription;
-  StreamSubscription<({String deviceId, ReconnectStatus status})>?
-      _reconnectSubscription;
   late ConnectionManager _connectionManager;
   late BridgeDatabase _db;
 
@@ -25,22 +22,6 @@ class DeviceListNotifier extends AsyncNotifier<List<BridgeDevice>> {
     final settings = await ref.read(appSettingsProvider.future);
     _connectionManager = ref.read(connectionManagerProvider);
     _db = await ref.read(databaseProvider.future);
-
-    _reconnectSubscription =
-        _connectionManager.reconnectStatus.listen((event) async {
-      if (event.status != ReconnectStatus.connected) return;
-      final pairingService = await ref.read(pairingServiceProvider.future);
-      try {
-        final session = await _connectionManager.getOrCreateSession(
-          event.deviceId,
-          '',
-          0,
-        );
-        pairingService.initiateHandshake(session);
-      } catch (e) {
-        log('DeviceListNotifier: handshake after reconnect failed: $e');
-      }
-    });
 
     _discoveryService = MdnsDiscoveryService(
       serverPort: _connectionManager.port,
@@ -54,7 +35,6 @@ class DeviceListNotifier extends AsyncNotifier<List<BridgeDevice>> {
 
     ref.onDispose(() {
       _subscription?.cancel();
-      _reconnectSubscription?.cancel();
       _discoveryService?.stop();
     });
 

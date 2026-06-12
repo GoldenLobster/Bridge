@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/providers/connection_providers.dart';
+import '../../core/providers/device_list_provider.dart';
 import '../../core/services/pairing_service_provider.dart';
 import '../../shared/screens/paired_devices_screen.dart';
 
@@ -30,6 +31,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(connectionManagerProvider);
+      ref.read(deviceListProvider.notifier);
     });
   }
 

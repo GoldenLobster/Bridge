@@ -38,29 +38,12 @@ class PairedDevicesScreen extends ConsumerStatefulWidget {
 
 class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
   StreamSubscription<Set<String>>? _activeTransfersSub;
-  StreamSubscription<({String deviceId, ReconnectStatus status})>?
-      _reconnectSub;
   Set<String> _activeTransferIds = {};
 
   @override
   void dispose() {
     _activeTransfersSub?.cancel();
-    _reconnectSub?.cancel();
     super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final cm = ref.read(connectionManagerProvider);
-      _reconnectSub = cm.reconnectStatus
-          .where((event) => event.status == ReconnectStatus.connected ||
-              event.status == ReconnectStatus.disconnected)
-          .listen((_) {
-        if (mounted) setState(() {});
-      });
-    });
   }
 
   @override
@@ -87,6 +70,16 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
           return map;
         }) ??
         {};
+
+    ref.listen(reconnectStatusProvider, (_, next) {
+      final event = next.valueOrNull;
+      if (event == null) return;
+      if (!mounted) return;
+      final deviceIds = devicesAsync.valueOrNull;
+      if (deviceIds != null && deviceIds.any((d) => d.id == event.deviceId)) {
+        setState(() {});
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -205,6 +198,7 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     final sizeStr = _formatFileSize(offer.fileSize);
 
     return Card(
+      key: ValueKey('pending_${offer.transferId}'),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -328,6 +322,7 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     }
 
     return ListTile(
+      key: ValueKey(device.id),
       leading: Icon(icon, color: iconColor),
       title: Text(device.name,
           overflow: TextOverflow.ellipsis, maxLines: 1),
