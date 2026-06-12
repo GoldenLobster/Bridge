@@ -30,7 +30,7 @@ class PairingService {
     _router.register('handshake', _onHandshake);
   }
 
-  void _onHandshake(Message message, String sourceDeviceId) {
+  Future<void> _onHandshake(Message message, String sourceDeviceId) async {
     try {
       final remoteId = message.payload['deviceId'] as String? ?? '';
       final remoteName = message.payload['name'] as String? ?? '';
@@ -45,7 +45,7 @@ class PairingService {
         _certManager.addTrustedCertificate(remoteId, remoteTlsCert);
       }
 
-      _db.into(_db.devices).insertOnConflictUpdate(
+      await _db.into(_db.devices).insertOnConflictUpdate(
         DevicesCompanion.insert(
           id: remoteId,
           name: remoteName,
