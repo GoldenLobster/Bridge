@@ -41,6 +41,13 @@ class PairingService {
 
       if (remoteId.isEmpty || remoteId == _settings.deviceId) return;
 
+      final alreadyPaired = await (_db.select(_db.devices)
+            ..where((d) => d.id.equals(remoteId))
+            ..where((d) => d.isPaired.equals(true)))
+          .get();
+
+      if (alreadyPaired.isNotEmpty) return;
+
       if (remoteTlsCert.isNotEmpty) {
         _certManager.addTrustedCertificate(remoteId, remoteTlsCert);
       }
