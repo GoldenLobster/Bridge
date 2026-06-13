@@ -104,38 +104,13 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
           ),
         ],
       ),
-      body: devicesAsync.when(
-        data: (devices) {
-          final hasContent = devices.isNotEmpty ||
-              pendingOffers.isNotEmpty ||
-              _activeTransferIds.isNotEmpty;
-
-          if (!hasContent) {
-            return _buildEmptyState(isDesktop);
-          }
-
-          return ListView(
-            children: [
-              if (pendingOffers.isNotEmpty) ...[
-                _buildSectionHeader('Incoming Files'),
-                ...pendingOffers.map(
-                    (o) => _buildPendingOfferCard(o, deviceMap)),
-              ],
-              if (_activeTransferIds.isNotEmpty && service != null) ...[
-                _buildSectionHeader('Transfers'),
-                ..._activeTransferIds.map(
-                    (tid) => _buildTransferTile(tid, service, deviceMap)),
-              ],
-              if (devices.isNotEmpty) ...[
-                _buildSectionHeader('Paired Devices'),
-                ...devices.map(
-                    (d) => _buildDeviceTile(d, connectionManager, service)),
-              ],
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+      body: _buildBody(
+        devicesAsync,
+        connectionManager,
+        pendingOffers,
+        service,
+        deviceMap,
+        isDesktop,
       ),
       floatingActionButton: devicesAsync.valueOrNull?.isNotEmpty == true
           ? FloatingActionButton.extended(
@@ -335,6 +310,52 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildBody(
+    AsyncValue<List<db.Device>> devicesAsync,
+    ConnectionManager connectionManager,
+    List<PendingOffer> pendingOffers,
+    FileTransferService? service,
+    Map<String, db.Device> deviceMap,
+    bool isDesktop,
+  ) {
+    final devices = devicesAsync.valueOrNull ?? [];
+    final hasContent = devices.isNotEmpty ||
+        pendingOffers.isNotEmpty ||
+        _activeTransferIds.isNotEmpty;
+
+    final contentChildren = <Widget>[
+      if (pendingOffers.isNotEmpty) ...[
+        _buildSectionHeader('Incoming Files'),
+        ...pendingOffers.map((o) => _buildPendingOfferCard(o, deviceMap)),
+      ],
+      if (_activeTransferIds.isNotEmpty && service != null) ...[
+        _buildSectionHeader('Transfers'),
+        ..._activeTransferIds.map(
+            (tid) => _buildTransferTile(tid, service, deviceMap)),
+      ],
+      if (devices.isNotEmpty) ...[
+        _buildSectionHeader('Paired Devices'),
+        ...devices.map(
+            (d) => _buildDeviceTile(d, connectionManager, service)),
+      ],
+    ];
+
+    if (!hasContent) {
+      if (devicesAsync.isLoading) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (devicesAsync.hasError) {
+        return Center(child: Text('${devicesAsync.error}'));
+      }
+      return _buildEmptyState(isDesktop);
+    }
+
+    if (isDesktop) {
+      return ListView(children: contentChildren);
+    }
+    return SingleChildScrollView(child: Column(children: contentChildren));
   }
 
   void _openPairing(bool isDesktop) {
