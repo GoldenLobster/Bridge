@@ -10,6 +10,7 @@ import '../../core/providers/connection_providers.dart';
 import '../../core/services/app_settings.dart';
 import '../../core/services/app_settings_provider.dart';
 import '../../core/services/pairing_service_provider.dart';
+import '../../core/utils/network_utils.dart';
 import '../../shared/screens/paired_devices_screen.dart';
 
 class PairingScreen extends ConsumerStatefulWidget {
@@ -82,20 +83,32 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Bridge')),
       body: settingsAsync.when(
-        data: (settings) => FutureBuilder<List<NetworkInterface>>(
-          future: NetworkInterface.list(),
+        data: (settings) => FutureBuilder<List<dynamic>>(
+          future: Future.wait([
+            NetworkInterface.list(),
+            settings.get('serverPort'),
+          ]),
           builder: (context, snapshot) {
-            final ip = _firstNonLoopbackIpv4(snapshot.data);
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final interfaces = snapshot.data![0] as List<NetworkInterface>;
+            final portStr = snapshot.data![1] as String?;
+            final ip = firstNonLoopbackIpv4(interfaces);
 
             if (ip == null) {
               return const Center(child: CircularProgressIndicator());
             }
 
+            final port = portStr != null
+                ? int.parse(portStr)
+                : connectionManager.actualPort;
             final name = _deviceName(settings);
             final payload = {
               'deviceId': settings.deviceId,
               'ip': ip,
-              'port': connectionManager.port,
+              'port': port,
             };
             final json = jsonEncode(payload);
 
@@ -114,7 +127,7 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '$ip:${connectionManager.port}',
+                    '$ip:$port',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
@@ -133,15 +146,4 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
     return name.isNotEmpty ? name : 'Desktop';
   }
 
-  String? _firstNonLoopbackIpv4(List<NetworkInterface>? interfaces) {
-    if (interfaces == null) return null;
-    for (final iface in interfaces) {
-      for (final addr in iface.addresses) {
-        if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
-          return addr.address;
-        }
-      }
-    }
-    return null;
-  }
 }

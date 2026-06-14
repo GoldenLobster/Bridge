@@ -23,8 +23,13 @@ class DeviceListNotifier extends AsyncNotifier<List<BridgeDevice>> {
     _connectionManager = ref.read(connectionManagerProvider);
     _db = await ref.read(databaseProvider.future);
 
+    final portString = await settings.get('serverPort');
+    final serverPort = portString != null
+        ? int.parse(portString)
+        : _connectionManager.actualPort;
+
     _discoveryService = MdnsDiscoveryService(
-      serverPort: _connectionManager.port,
+      serverPort: serverPort,
       deviceId: settings.deviceId,
       deviceName: settings.deviceName,
       platform: settings.platform,

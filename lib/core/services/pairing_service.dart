@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io';
 
 import '../database/database.dart' hide Message;
 import '../models/message.dart';
@@ -66,6 +67,8 @@ class PairingService {
 
       _pairedController.add(remoteName);
 
+      final localIp = await _resolveLocalIp();
+
       final response = Message(
         type: 'handshake',
         deviceId: _settings.deviceId,
@@ -73,8 +76,8 @@ class PairingService {
           'deviceId': _settings.deviceId,
           'name': _settings.deviceName,
           'platform': _settings.platform,
-          'ip': remoteIp,
-          'port': _connectionManager.port,
+          'ip': localIp,
+          'port': _connectionManager.actualPort,
           'tlsCert': _certManager.localCertPem,
         },
       );
@@ -89,7 +92,8 @@ class PairingService {
     }
   }
 
-  void initiateHandshake(ConnectionSession session) {
+  Future<void> initiateHandshake(ConnectionSession session) async {
+    final localIp = await _resolveLocalIp();
     final message = Message(
       type: 'handshake',
       deviceId: _settings.deviceId,
@@ -97,11 +101,25 @@ class PairingService {
         'deviceId': _settings.deviceId,
         'name': _settings.deviceName,
         'platform': _settings.platform,
-        'ip': '',
-        'port': _connectionManager.port,
+        'ip': localIp,
+        'port': _connectionManager.actualPort,
         'tlsCert': _certManager.localCertPem,
       },
     );
     session.send(message);
+  }
+
+  static Future<String> _resolveLocalIp() async {
+    try {
+      final interfaces = await NetworkInterface.list();
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
+            return addr.address;
+          }
+        }
+      }
+    } catch (_) {}
+    return '';
   }
 }

@@ -23,6 +23,8 @@ class ConnectionServer {
         port,
         securityContext,
       );
+    } on SocketException {
+      rethrow;
     } catch (e) {
       throw StateError('Failed to bind secure server on port $port: $e');
     }
@@ -40,6 +42,8 @@ class ConnectionServer {
       },
     );
   }
+
+  int get actualPort => _serverSocket?.port ?? port;
 
   Future<void> stop() async {
     await _subscription?.cancel();

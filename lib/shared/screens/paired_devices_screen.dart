@@ -9,13 +9,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/database/database.dart' as db;
 import '../../core/database/providers.dart';
-import '../../core/models/pending_offer.dart';
 import '../../core/networking/connection_manager.dart';
 import '../../core/providers/connection_providers.dart';
-import '../../core/providers/pending_offers_provider.dart';
 import '../../core/services/app_settings_provider.dart';
 import '../../core/services/file_transfer_service_provider.dart';
 import '../../core/services/file_transfer_service.dart';
+import '../../core/utils/network_utils.dart';
 import '../../mobile/screens/qr_scanner_screen.dart';
 import 'active_transfers_screen.dart';
 import 'no_app_share_screen.dart';
@@ -29,7 +28,9 @@ final pairedDevicesProvider = FutureProvider<List<db.Device>>((ref) async {
 });
 
 class PairedDevicesScreen extends ConsumerStatefulWidget {
-  const PairedDevicesScreen({super.key});
+  final List<String>? filePaths;
+
+  const PairedDevicesScreen({super.key, this.filePaths});
 
   @override
   ConsumerState<PairedDevicesScreen> createState() =>
@@ -50,7 +51,6 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
   Widget build(BuildContext context) {
     final devicesAsync = ref.watch(pairedDevicesProvider);
     final connectionManager = ref.watch(connectionManagerProvider);
-    final pendingOffers = ref.watch(pendingOffersProvider);
     final fileTransferServiceAsync = ref.watch(fileTransferServiceProvider);
     final isDesktop =
         Platform.isLinux || Platform.isMacOS || Platform.isWindows;
@@ -63,13 +63,6 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
         if (mounted) setState(() => _activeTransferIds = ids);
       });
     }
-
-    final deviceMap = devicesAsync.valueOrNull
-            ?.fold<Map<String, db.Device>>({}, (map, d) {
-          map[d.id] = d;
-          return map;
-        }) ??
-        {};
 
     return Scaffold(
       appBar: AppBar(
@@ -107,9 +100,7 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
       body: _buildBody(
         devicesAsync,
         connectionManager,
-        pendingOffers,
         service,
-        deviceMap,
         isDesktop,
       ),
       floatingActionButton: devicesAsync.valueOrNull?.isNotEmpty == true
@@ -120,6 +111,34 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
                   Text(isDesktop ? 'Show Pairing QR' : 'Pair New Device'),
             )
           : null,
+    );
+  }
+
+  Widget _buildFilesReadyBanner(List<String> paths) {
+    final names = paths.map((p) => p.split('/').last).join(', ');
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.file_present, color: Colors.blue.shade700, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${paths.length} file(s) ready to send:\n$names',
+              style: TextStyle(color: Colors.blue.shade700, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 3,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -155,67 +174,10 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     );
   }
 
-  Widget _buildPendingOfferCard(
-    PendingOffer offer,
-    Map<String, db.Device> deviceMap,
-  ) {
-    final deviceName = deviceMap[offer.deviceId]?.name ?? offer.deviceId;
-    final sizeStr = _formatFileSize(offer.fileSize);
-
-    return Card(
-      key: ValueKey('pending_${offer.transferId}'),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.file_download, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    offer.fileName,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                Text(sizeStr,
-                    style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text('From: $deviceName',
-                style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                OutlinedButton(
-                  onPressed: () => _rejectOffer(offer.transferId),
-                  child: const Text('Reject'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () => _acceptOffer(offer.transferId),
-                  child: const Text('Accept'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildTransferTile(
     String transferId,
     FileTransferService service,
-    Map<String, db.Device> deviceMap,
   ) {
-    final deviceId = service.getDeviceIdForTransfer(transferId) ?? '';
-    final deviceName = deviceMap[deviceId]?.name ?? deviceId;
     final fileName = service.getFileName(transferId) ?? transferId;
 
     return StreamBuilder<double>(
@@ -247,9 +209,6 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
                 ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(value: progress),
-                const SizedBox(height: 4),
-                Text(deviceName,
-                    style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
@@ -315,25 +274,21 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
   Widget _buildBody(
     AsyncValue<List<db.Device>> devicesAsync,
     ConnectionManager connectionManager,
-    List<PendingOffer> pendingOffers,
     FileTransferService? service,
-    Map<String, db.Device> deviceMap,
     bool isDesktop,
   ) {
     final devices = devicesAsync.valueOrNull ?? [];
-    final hasContent = devices.isNotEmpty ||
-        pendingOffers.isNotEmpty ||
-        _activeTransferIds.isNotEmpty;
+    final hasContent =
+        devices.isNotEmpty || _activeTransferIds.isNotEmpty;
 
     final contentChildren = <Widget>[
-      if (pendingOffers.isNotEmpty) ...[
-        _buildSectionHeader('Incoming Files'),
-        ...pendingOffers.map((o) => _buildPendingOfferCard(o, deviceMap)),
+      if (widget.filePaths != null && widget.filePaths!.isNotEmpty) ...[
+        _buildFilesReadyBanner(widget.filePaths!),
       ],
       if (_activeTransferIds.isNotEmpty && service != null) ...[
         _buildSectionHeader('Transfers'),
         ..._activeTransferIds.map(
-            (tid) => _buildTransferTile(tid, service, deviceMap)),
+            (tid) => _buildTransferTile(tid, service)),
       ],
       if (devices.isNotEmpty) ...[
         _buildSectionHeader('Paired Devices'),
@@ -374,17 +329,22 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     final settings = await ref.read(appSettingsProvider.future);
     final connectionManager = ref.read(connectionManagerProvider);
     final interfaces = await NetworkInterface.list();
-    final ip = _firstNonLoopbackIpv4(interfaces);
+    final ip = firstNonLoopbackIpv4(interfaces);
 
     if (ip == null || !context.mounted) return;
 
+    final portStr = await settings.get('serverPort');
+    if (!context.mounted) return;
+    final port = portStr != null
+        ? int.parse(portStr)
+        : connectionManager.actualPort;
     final name = settings.deviceName.isNotEmpty
         ? settings.deviceName
         : 'Desktop';
     final payload = {
       'deviceId': settings.deviceId,
       'ip': ip,
-      'port': connectionManager.port,
+      'port': port,
     };
     final json = jsonEncode(payload);
 
@@ -402,7 +362,7 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
               child: QrImageView(data: json, size: 250),
             ),
             const SizedBox(height: 16),
-            Text('$ip:${connectionManager.port}',
+            Text('$ip:$port',
                 style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
@@ -416,43 +376,36 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     );
   }
 
-  Future<void> _acceptOffer(String transferId) async {
-    try {
-      final service = await ref.read(fileTransferServiceProvider.future);
-      await service.acceptOffer(transferId);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to accept: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _rejectOffer(String transferId) async {
-    try {
-      final service = await ref.read(fileTransferServiceProvider.future);
-      service.rejectOffer(transferId);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to reject: $e')),
-        );
-      }
-    }
-  }
-
   Future<void> _sendFile(
       String deviceId, FileTransferService? service) async {
     if (service == null) return;
 
     try {
-      final result = await FilePicker.pickFiles();
-      if (result == null || result.files.isEmpty) return;
-      final path = result.files.first.path;
-      if (path == null) return;
+      final List<String> paths;
+      if (widget.filePaths != null && widget.filePaths!.isNotEmpty) {
+        paths = widget.filePaths!;
+      } else {
+        final result = await FilePicker.pickFiles();
+        if (result == null || result.files.isEmpty) return;
+        final path = result.files.first.path;
+        if (path == null) return;
+        paths = [path];
+      }
 
-      await service.sendFile(deviceId, path);
+      for (final path in paths) {
+        await service.sendFile(deviceId, path);
+      }
+
+      if (widget.filePaths != null && widget.filePaths!.isNotEmpty) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const PairedDevicesScreen(),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -481,26 +434,6 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     }
   }
 
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) {
-      return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    }
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
 }
 
-String? _firstNonLoopbackIpv4(List<NetworkInterface>? interfaces) {
-  if (interfaces == null) return null;
-  for (final iface in interfaces) {
-    for (final addr in iface.addresses) {
-      if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
-        return addr.address;
-      }
-    }
-  }
-  return null;
-}
+

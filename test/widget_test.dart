@@ -29,7 +29,12 @@ void main() {
           appSettingsProvider.overrideWith((ref) => Future.value(settings)),
           certificateManagerProvider.overrideWith((ref) => certManager),
         ],
-        child: const BridgeApp(),
+        child: BridgeApp(
+          db: db,
+          settings: settings,
+          isDesktop: false,
+          isAndroid: false,
+        ),
       ),
     );
 

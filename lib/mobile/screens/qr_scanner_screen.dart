@@ -98,7 +98,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
 
       final session =
           await connectionManager.getOrCreateSession(deviceId, ip, port);
-      pairingService.initiateHandshake(session);
+      await pairingService.initiateHandshake(session);
     } catch (e) {
       log('QrScannerScreen: failed to process QR code: $e');
       if (!mounted) return;

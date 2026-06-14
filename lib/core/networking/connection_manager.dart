@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
+import 'dart:io';
 
 import 'package:pointycastle/digests/sha256.dart';
 
@@ -10,6 +12,11 @@ import 'connection_client.dart';
 import 'connection_server.dart';
 import 'connection_session.dart';
 import 'message_router.dart';
+
+typedef HeartbeatPing = Future<int> Function(
+  String deviceId, {
+  Duration timeout,
+});
 
 /// Manages the [ConnectionServer], tracks active [ConnectionSession]s by device ID, routes messages through a shared [MessageRouter], and handles automatic reconnection with exponential backoff.
 class ConnectionManager {
@@ -26,6 +33,14 @@ class ConnectionManager {
   final StreamController<({String deviceId, ReconnectStatus status})>
       _reconnectStatusController =
       StreamController<({String deviceId, ReconnectStatus status})>.broadcast();
+
+  int _actualPort = 0;
+  int get actualPort => _actualPort == 0 ? port : _actualPort;
+
+  HeartbeatPing? _pingDevice;
+  final Map<String, Timer> _heartbeatTimers = {};
+
+  set pingDevice(HeartbeatPing fn) => _pingDevice = fn;
 
   ConnectionManager({
     required this.port,
@@ -44,7 +59,17 @@ class ConnectionManager {
       port: port,
       securityContext: certManager.localContext,
     );
-    await _server!.start();
+    try {
+      await _server!.start();
+    } on SocketException {
+      await _server!.stop();
+      _server = ConnectionServer(
+        port: 0,
+        securityContext: certManager.localContext,
+      );
+      await _server!.start();
+    }
+    _actualPort = _server!.actualPort;
     _serverSubscription = _server!.sessions.listen(_onNewSession);
   }
 
@@ -73,6 +98,7 @@ class ConnectionManager {
     );
     _sessions[deviceId] = session;
     _resetReconnectState(deviceId);
+    _startHeartbeat(deviceId);
     session.messages.listen(
       (message) => _handleMessage(session, message, deviceId),
       onError: (error) => _eventController.addError(error),
@@ -104,6 +130,10 @@ class ConnectionManager {
   }
 
   Future<void> stop() async {
+    for (final timer in _heartbeatTimers.values) {
+      timer.cancel();
+    }
+    _heartbeatTimers.clear();
     for (final state in _reconnectStates.values) {
       state.timer?.cancel();
     }
@@ -170,6 +200,31 @@ class ConnectionManager {
     _reconnectStatusController.add((deviceId: deviceId, status: status));
   }
 
+  void _startHeartbeat(String deviceId) {
+    _stopHeartbeat(deviceId);
+    _heartbeatTimers[deviceId] = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _performHeartbeat(deviceId),
+    );
+  }
+
+  void _stopHeartbeat(String deviceId) {
+    _heartbeatTimers.remove(deviceId)?.cancel();
+  }
+
+  Future<void> _performHeartbeat(String deviceId) async {
+    final ping = _pingDevice;
+    if (ping == null) return;
+    try {
+      await ping(deviceId, timeout: const Duration(seconds: 10));
+    } catch (e) {
+      log('ConnectionManager: heartbeat failed for $deviceId: $e');
+      _stopHeartbeat(deviceId);
+      final session = _sessions[deviceId];
+      session?.close();
+    }
+  }
+
   void _onNewSession(ConnectionSession session) {
     session.messages.listen(
       (message) => _handleMessage(session, message, message.deviceId),
@@ -194,6 +249,7 @@ class ConnectionManager {
       }
       _sessions[remoteDeviceId] = session;
       _resetReconnectState(remoteDeviceId);
+      _startHeartbeat(remoteDeviceId);
     }
 
     router.route(message, sourceDeviceId);
@@ -204,6 +260,7 @@ class ConnectionManager {
   }
 
   void closeSession(String deviceId) {
+    _stopHeartbeat(deviceId);
     final session = _sessions.remove(deviceId);
     session?.close();
     cancelReconnect(deviceId);
@@ -217,6 +274,15 @@ class ConnectionManager {
     session.send(message);
   }
 
+  void broadcast(Message message) {
+    for (final session in _sessions.values) {
+      try {
+        session.send(message);
+      } catch (_) {
+      }
+    }
+  }
+
   void _removeSession(ConnectionSession session) {
     final deviceIds = _sessions
         .entries
@@ -225,6 +291,7 @@ class ConnectionManager {
         .toList();
     for (final id in deviceIds) {
       _sessions.remove(id);
+      _stopHeartbeat(id);
 
       final state = _reconnectStates[id];
       if (state == null) {

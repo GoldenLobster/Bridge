@@ -24,7 +24,6 @@ class CertificateManager {
   SecurityContext? _localContext;
   String? _localCertPem;
   final Map<String, _TrustedEntry> _trusted = {};
-  int _nextTrustedIndex = 0;
 
   CertificateManager(this._db);
 
@@ -67,6 +66,7 @@ class CertificateManager {
       ..usePrivateKey(keyFile.path);
 
     await _reloadTrusted();
+    await _writeCombinedTrustedFile();
   }
 
   Future<void> addTrustedCertificate(String deviceId, String certPem) async {
@@ -74,12 +74,16 @@ class CertificateManager {
     final fingerprint = _computeFingerprint(der);
     _trusted[deviceId] = _TrustedEntry(certPem, fingerprint);
     await _setSetting('trusted_cert_$deviceId', certPem);
+    await _writeCombinedTrustedFile();
+  }
 
+  Future<void> _writeCombinedTrustedFile() async {
+    if (_localContext == null) return;
     final dir = await _certDir();
-    final index = _nextTrustedIndex++;
-    final file = File(p.join(dir.path, 'bridge_trusted_$index.pem'));
-    await file.writeAsString(certPem);
-    _localContext?.setTrustedCertificates(file.path);
+    final combined = _trusted.values.map((e) => e.certPem).join('\n');
+    final file = File(p.join(dir.path, 'bridge_trusted_combined.pem'));
+    await file.writeAsString(combined);
+    _localContext!.setTrustedCertificates(file.path);
   }
 
   String? getStoredFingerprint(String deviceId) {

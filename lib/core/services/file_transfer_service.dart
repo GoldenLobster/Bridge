@@ -477,6 +477,17 @@ class FileTransferService {
     for (final tid in activeIds) {
       if (_incomingSinks.containsKey(tid)) {
         _cleanupIncomingTransfer(tid, 'failed');
+      } else if (_pendingOfferCompleters.containsKey(tid)) {
+        _updateTransferStatus(tid, 'failed');
+        _progressControllers.remove(tid)?.close();
+        _pendingOfferCompleters.remove(tid)?.completeError(
+          StateError('Remote device disconnected before accepting transfer'),
+        );
+        _transferDeviceIds.remove(tid);
+        _transferFileNames.remove(tid);
+        _transferFileSizes.remove(tid);
+        _transferDirections.remove(tid);
+        _notifyActiveTransfers();
       }
     }
 
