@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 
+import 'package:drift/drift.dart';
+
 import '../database/database.dart' hide Message;
 import '../models/message.dart';
 import '../networking/connection_manager.dart';
@@ -47,7 +49,37 @@ class PairingService {
             ..where((d) => d.isPaired.equals(true)))
           .get();
 
-      if (alreadyPaired.isNotEmpty) return;
+      if (alreadyPaired.isNotEmpty) {
+        await (_db.update(_db.devices)
+              ..where((d) => d.id.equals(remoteId)))
+            .write(DevicesCompanion(
+              ip: Value(remoteIp),
+              port: Value(remotePort),
+              lastSeen: Value(DateTime.now()),
+            ));
+
+        final localIp = await _resolveLocalIp();
+        final response = Message(
+          type: 'handshake',
+          deviceId: _settings.deviceId,
+          payload: {
+            'deviceId': _settings.deviceId,
+            'name': _settings.deviceName,
+            'platform': _settings.platform,
+            'ip': localIp,
+            'port': _connectionManager.actualPort,
+          },
+        );
+
+        try {
+          _connectionManager.sendToDevice(sourceDeviceId, response);
+        } catch (e) {
+          log('PairingService: failed to send ack: $e');
+        }
+
+        _pairedController.add(remoteName);
+        return;
+      }
 
       if (remoteTlsCert.isNotEmpty) {
         _certManager.addTrustedCertificate(remoteId, remoteTlsCert);

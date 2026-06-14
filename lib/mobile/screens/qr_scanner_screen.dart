@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../core/database/providers.dart';
 import '../../core/providers/connection_providers.dart';
 import '../../core/providers/device_list_provider.dart';
 import '../../core/services/pairing_service_provider.dart';
@@ -29,9 +30,22 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       ref.read(connectionManagerProvider);
       ref.read(deviceListProvider.notifier);
+
+      final db = await ref.read(databaseProvider.future);
+      final paired = await (db.select(db.devices)
+            ..where((d) => d.isPaired.equals(true)))
+          .get();
+      if (paired.isNotEmpty && mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const PairedDevicesScreen(),
+          ),
+        );
+      }
     });
   }
 

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../core/database/providers.dart';
 import '../../core/providers/connection_providers.dart';
 import '../../core/services/app_settings.dart';
 import '../../core/services/app_settings_provider.dart';
@@ -24,6 +25,25 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
   String? _pairedDeviceName;
   StreamSubscription<String>? _onPairedSub;
   bool _listening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final db = await ref.read(databaseProvider.future);
+      final paired = await (db.select(db.devices)
+            ..where((d) => d.isPaired.equals(true)))
+          .get();
+      if (paired.isNotEmpty && mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const PairedDevicesScreen(),
+          ),
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {
