@@ -169,7 +169,7 @@ class CertificateManager {
     final priv = pair.privateKey as RSAPrivateKey;
     final pub = pair.publicKey as RSAPublicKey;
 
-    final keyPem = _encodePem('RSA PRIVATE KEY', _encodeRsaPrivateKey(priv));
+    final keyPem = _encodePem('PRIVATE KEY', _encodePkcs8PrivateKey(priv));
 
     final serial = BigInt.from(DateTime.now().millisecondsSinceEpoch);
     final notBefore = DateTime.now().subtract(const Duration(days: 1));
@@ -206,6 +206,17 @@ class CertificateManager {
       ..add(ASN1Integer(key.privateExponent! % (key.q! - BigInt.one)))
       ..add(ASN1Integer(key.q!.modInverse(key.p!)));
     return seq.encodedBytes;
+  }
+
+  /// PKCS#8 PrivateKeyInfo wrapping the PKCS#1 key — required by iOS/macOS
+  /// Security framework which does not accept raw PKCS#1.
+  static Uint8List _encodePkcs8PrivateKey(RSAPrivateKey key) {
+    final pkcs1Der = _encodeRsaPrivateKey(key);
+    final pkcs8 = ASN1Sequence()
+      ..add(ASN1Integer(BigInt.zero))
+      ..add(_algoId('1.2.840.113549.1.1.1'))
+      ..add(ASN1OctetString(pkcs1Der));
+    return pkcs8.encodedBytes;
   }
 
   /// TBSCertificate for a self-signed X.509v3 cert.
