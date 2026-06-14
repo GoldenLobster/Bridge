@@ -79,6 +79,7 @@ class CertificateManager {
 
   Future<void> _writeCombinedTrustedFile() async {
     if (_localContext == null) return;
+    if (_trusted.isEmpty) return;
     final dir = await _certDir();
     final combined = _trusted.values.map((e) => e.certPem).join('\n');
     final file = File(p.join(dir.path, 'bridge_trusted_combined.pem'));
