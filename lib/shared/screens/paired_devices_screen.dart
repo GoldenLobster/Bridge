@@ -242,7 +242,7 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     } else {
       icon = Icons.circle_outlined;
       iconColor = Colors.grey;
-      subtitleText = device.platform;
+      subtitleText = 'Tap to connect';
     }
 
     return ListTile(
@@ -252,6 +252,9 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
           overflow: TextOverflow.ellipsis, maxLines: 1),
       subtitle: Text(subtitleText,
           overflow: TextOverflow.ellipsis, maxLines: 1),
+      onTap: isOnline || isReconnecting
+          ? null
+          : () => _reconnect(device, connectionManager),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -261,6 +264,12 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
               onPressed: () => _sendFile(device.id, service),
               tooltip: 'Send File',
             ),
+          if (!isOnline && !isReconnecting)
+            IconButton(
+              icon: const Icon(Icons.wifi_find),
+              onPressed: () => _reconnect(device, connectionManager),
+              tooltip: 'Connect',
+            ),
           IconButton(
             icon: const Icon(Icons.link_off),
             onPressed: () => _unpair(device),
@@ -269,6 +278,13 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _reconnect(
+    db.Device device,
+    ConnectionManager connectionManager,
+  ) async {
+    connectionManager.scheduleReconnect(device.id, device.ip, device.port);
   }
 
   Widget _buildBody(
@@ -319,7 +335,9 @@ class _PairedDevicesScreenState extends ConsumerState<PairedDevicesScreen> {
     } else {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+        MaterialPageRoute(
+          builder: (_) => const QrScannerScreen(isPairingFromList: true),
+        ),
       );
     }
   }

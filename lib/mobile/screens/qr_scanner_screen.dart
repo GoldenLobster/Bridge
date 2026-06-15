@@ -15,7 +15,9 @@ import '../../shared/screens/paired_devices_screen.dart';
 enum ScannerState { scanning, processing, error }
 
 class QrScannerScreen extends ConsumerStatefulWidget {
-  const QrScannerScreen({super.key});
+  final bool isPairingFromList;
+
+  const QrScannerScreen({super.key, this.isPairingFromList = false});
 
   @override
   ConsumerState<QrScannerScreen> createState() => _QrScannerScreenState();
@@ -33,6 +35,8 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       ref.read(connectionManagerProvider);
       ref.read(deviceListProvider.notifier);
+
+      if (widget.isPairingFromList) return;
 
       final db = await ref.read(databaseProvider.future);
       final paired = await (db.select(db.devices)
